@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_spl::token::{self, TokenAccount, Transfer};
 use solana_program::{
     account_info::AccountInfo, msg, program::invoke, pubkey::Pubkey, system_instruction,
 };
@@ -17,8 +18,12 @@ pub mod test_program {
 
         let balance = receiver.lamports();
 
-        if (amount + 500) > balance {
-            msg!("Invalid bet {:?} {:?}", amount + 500, balance);
+        if (amount + 100000) > balance {
+            msg!(
+                "Invalid bet {:?} {:?}",
+                (amount * 1.1 as u64) + 100000,
+                balance
+            ); //0.0001 sol
             return Err(error!(ErrorCode::Unauthorized));
         }
 
@@ -40,6 +45,41 @@ pub mod test_program {
 
         Ok(())
     }
+
+    pub fn spl_transfer(ctx: Context<SplTransfer>, transfer_amount: u64) -> Result<()> {
+        let token_program = ctx.accounts.token_program.to_account_info();
+
+        let sender = ctx.accounts.sender.to_account_info();
+        let sender_account = ctx.accounts.sender_account.clone();
+        let receiver_account = ctx.accounts.receiver_account.clone();
+
+        let account = TokenAccount::try_deserialize(&mut &receiver_account.data.borrow_mut()[..])?;
+
+        msg!(
+            "Sending {:?} from {:?}",
+            transfer_amount,
+            account.owner.key(),
+        );
+
+        if account.amount < transfer_amount {
+            msg!("Invalid bet {:?} {:?}", transfer_amount, account.amount);
+            return Err(error!(ErrorCode::Unauthorized));
+        }
+
+        token::transfer(
+            CpiContext::new(
+                token_program,
+                Transfer {
+                    from: sender_account,
+                    to: receiver_account,
+                    authority: sender,
+                },
+            ),
+            transfer_amount,
+        )?;
+
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -50,6 +90,20 @@ pub struct SolTransfer<'info> {
     /// CHECK: This is not dangerous but I don't know why
     #[account(mut)]
     pub receiver: AccountInfo<'info>,
+}
+
+#[derive(Accounts)]
+pub struct SplTransfer<'info> {
+    /// CHECK: This is not dangerous but I don't know why
+    pub token_program: AccountInfo<'info>,
+    #[account(mut)]
+    pub sender: Signer<'info>,
+    /// CHECK: This is not dangerous but I don't know why
+    #[account(mut)]
+    pub sender_account: AccountInfo<'info>,
+    /// CHECK: This is not dangerous but I don't know why
+    #[account(mut)]
+    pub receiver_account: AccountInfo<'info>,
 }
 
 #[error_code]
