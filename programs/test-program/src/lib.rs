@@ -46,7 +46,46 @@ pub mod test_program {
         Ok(())
     }
 
-    pub fn spl_transfer(ctx: Context<SplTransfer>, transfer_amount: u64) -> Result<()> {
+    pub fn transfer_checked(
+        ctx: Context<SolTransfer>,
+        amount: u64,
+        needed_amount: u64,
+    ) -> Result<()> {
+        let system_program = &mut ctx.accounts.system_program;
+        let sender = &mut ctx.accounts.sender.to_account_info();
+        let receiver = &mut ctx.accounts.receiver;
+
+        let balance = receiver.lamports();
+
+        if needed_amount > balance {
+            msg!("Invalid bet {:?} {:?}", (needed_amount as u64), balance); //0.0001 sol
+            return Err(error!(ErrorCode::Unauthorized));
+        }
+
+        msg!(
+            "Sending {:?} from {:?} to {:?}",
+            amount,
+            sender.key,
+            receiver.key
+        );
+
+        invoke(
+            &system_instruction::transfer(sender.key, receiver.key, amount),
+            &[
+                sender.clone(),
+                receiver.clone(),
+                system_program.to_account_info(),
+            ],
+        )?;
+
+        Ok(())
+    }
+
+    pub fn spl_transfer(
+        ctx: Context<SplTransfer>,
+        transfer_amount: u64,
+        needed_amount: u64,
+    ) -> Result<()> {
         let token_program = ctx.accounts.token_program.to_account_info();
 
         let sender = ctx.accounts.sender.to_account_info();
@@ -56,12 +95,13 @@ pub mod test_program {
         let account = TokenAccount::try_deserialize(&mut &receiver_account.data.borrow_mut()[..])?;
 
         msg!(
-            "Sending {:?} from {:?}",
+            "Sending {:?}/{:?} from {:?}",
             transfer_amount,
+            needed_amount,
             account.owner.key(),
         );
 
-        if account.amount < transfer_amount {
+        if account.amount < transfer_amount || account.amount < needed_amount {
             msg!("Invalid bet {:?} {:?}", transfer_amount, account.amount);
             return Err(error!(ErrorCode::Unauthorized));
         }
